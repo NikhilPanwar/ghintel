@@ -6,17 +6,8 @@
   <title>GitHub Commits Email Finder</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      padding: 0;
-      background: #f2f4f8;
-      font-family: 'Segoe UI', sans-serif;
-    }
-
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 0; background: #f2f4f8; font-family: 'Segoe UI', sans-serif; }
     .container {
       height: 90vh;
       max-width: 800px;
@@ -29,33 +20,16 @@
       flex-direction: column;
       overflow: hidden;
     }
-
-    h2 {
-      margin-bottom: 20px;
-      color: #333;
-      text-align: center;
-    }
-
-    .input-group,
-    .options-group {
+    h2 { margin-bottom: 20px; color: #333; text-align: center; }
+    .input-group, .options-group {
       display: flex;
       justify-content: center;
       gap: 10px;
       flex-wrap: wrap;
       margin-bottom: 10px;
     }
-
-    .input-group>div {
-      display: flex;
-      flex-direction: column;
-    }
-
-    label {
-      font-size: 14px;
-      margin-bottom: 4px;
-      color: #333;
-    }
-
+    .input-group>div { display: flex; flex-direction: column; }
+    label { font-size: 14px; margin-bottom: 4px; color: #333; }
     input[type="text"] {
       padding: 10px;
       flex: 1;
@@ -64,14 +38,12 @@
       border-radius: 6px;
       font-size: 16px;
     }
-
     .checkbox-group {
       display: flex;
       align-items: center;
       gap: 5px;
       font-size: 14px;
     }
-
     button {
       padding: 10px 18px;
       background: #4f7df9;
@@ -86,12 +58,7 @@
       height: fit-content;
       margin-top: 22px;
     }
-
-    button[disabled] {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
+    button[disabled] { opacity: 0.6; cursor: not-allowed; }
     .spinner {
       width: 16px;
       height: 16px;
@@ -100,27 +67,9 @@
       border-radius: 50%;
       animation: spin 1s linear infinite;
     }
-
-    @keyframes spin {
-      to {
-        transform: rotate(360deg);
-      }
-    }
-
-    #status {
-      margin-bottom: 10px;
-      color: #444;
-      font-size: 15px;
-      text-align: center;
-    }
-
-    .total-count {
-      text-align: center;
-      margin: 8px 0;
-      font-size: 14px;
-      color: #444;
-    }
-
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #status { margin-bottom: 10px; color: #444; font-size: 15px; text-align: center; }
+    .total-count { text-align: center; margin: 8px 0; font-size: 14px; color: #444; }
     .table-wrapper {
       flex-grow: 1;
       overflow-y: auto;
@@ -128,39 +77,17 @@
       border-radius: 8px;
       min-height: 0;
     }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    th,
-    td {
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
       border-bottom: 1px solid #eee;
       padding: 8px 12px;
       font-size: 14px;
       text-align: left;
     }
-
-    th {
-      background: #f0f0f0;
-      position: sticky;
-      top: 0;
-    }
-
-    a {
-      color: #4f7df9;
-      text-decoration: none;
-    }
-
-    a:hover {
-      text-decoration: underline;
-    }
-
-    .export-wrapper {
-      text-align: center;
-      margin-top: 20px;
-    }
+    th { background: #f0f0f0; position: sticky; top: 0; }
+    a { color: #4f7df9; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .export-wrapper { text-align: center; margin-top: 20px; }
   </style>
 </head>
 
@@ -183,7 +110,7 @@
     </div>
     <div class="options-group">
       <label class="checkbox-group"><input type="checkbox" id="skipForks" checked /> Skip forks</label>
-      <label class="checkbox-group"><input type="checkbox" id="limitCommits" checked /> Only first 100 commits</label>
+      <label class="checkbox-group"><input type="checkbox" id="limitCommits" checked /> Only first 100 commits/repo</label>
     </div>
     <div id="status"></div>
     <div id="totalCount" class="total-count"></div>
@@ -192,8 +119,8 @@
         <thead>
           <tr>
             <th>Email</th>
-            <th>Repo</th>
-            <th>User</th>
+            <th>Username</th>
+            <th>Check HIBP</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -231,6 +158,7 @@
       stopSignal = false;
 
       const emailsSet = new Set();
+      const usernamesSet = new Set();
       const headers = token ? { Authorization: `token ${token}` } : {};
 
       findBtnText.textContent = 'Stop';
@@ -248,7 +176,6 @@
             return finish();
           }
           const repos = await reposRes.json();
-
           if (!Array.isArray(repos) || repos.length === 0) break;
 
           for (const repo of repos) {
@@ -274,20 +201,17 @@
                 if (stopSignal) break;
                 const email = commit?.commit?.author?.email;
                 const login = commit?.author?.login;
-                const repoName = repo.name;
-                const repoUrl = `https://github.com/${username}/${repo.name}`;
-                const userUrl = login ? `https://github.com/${login}` : '';
-                const uniqueKey = `${email}-${repoName}-${login}`;
 
-                if (email && !emailsSet.has(uniqueKey)) {
-                  emailsSet.add(uniqueKey);
-                  tableData.push({ email, repo: repoName, repoUrl, user: login || '', userUrl });
+                if (email && login && !emailsSet.has(email) && !usernamesSet.has(login)) {
+                  emailsSet.add(email);
+                  usernamesSet.add(login);
+                  tableData.push({ email, user: login });
 
                   const row = document.createElement('tr');
                   row.innerHTML = `
                     <td>${email}</td>
-                    <td><a href="${repoUrl}" target="_blank">${repoName}</a></td>
-                    <td>${login ? `<a href="${userUrl}" target="_blank">${login}</a>` : 'N/A'}</td>
+                    <td><a href="https://github.com/${login}" target="_blank">${login}</a></td>
+                    <td><a href="https://haveibeenpwned.com/account/${encodeURIComponent(email)}" target="_blank">Check HIBP</a></td>
                   `;
                   table.appendChild(row);
                   countDiv.textContent = `Results: ${tableData.length}`;
@@ -298,7 +222,6 @@
               commitPage++;
             }
           }
-
           repoPage++;
         }
 
@@ -319,24 +242,18 @@
     }
 
     function exportCSV() {
-      const csvHeader = ['Email', 'Repo Name', 'Repo URL', 'Username', 'User GitHub URL'];
+      const username = document.getElementById('username').value.trim();
+      const filename = `${username}_commits_users_emails.csv`;
+      const csvHeader = ['Email', 'Username'];
       const csvRows = [csvHeader.join(',')];
-
       for (const row of tableData) {
-        csvRows.push([
-          `"${row.email}"`,
-          `"${row.repo}"`,
-          `"${row.repoUrl}"`,
-          `"${row.user}"`,
-          `"${row.userUrl}"`
-        ].join(','));
+        csvRows.push([row.email, row.user].join(','));
       }
-
       const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'github_emails.csv';
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
