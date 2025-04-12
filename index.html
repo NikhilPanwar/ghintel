@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>GitHub Commits Email Finder</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background: #f2f4f8;
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    .container {
+      height: 90vh;
+      max-width: 800px;
+      margin: 5vh auto;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    h2 {
+      margin-bottom: 20px;
+      color: #333;
+      text-align: center;
+    }
+
+    .input-group,
+    .options-group {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .input-group>div {
+      display: flex;
+      flex-direction: column;
+    }
+
+    label {
+      font-size: 14px;
+      margin-bottom: 4px;
+      color: #333;
+    }
+
+    input[type="text"] {
+      padding: 10px;
+      flex: 1;
+      min-width: 180px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 16px;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 14px;
+    }
+
+    button {
+      padding: 10px 18px;
+      background: #4f7df9;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: fit-content;
+      margin-top: 22px;
+    }
+
+    button[disabled] {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid white;
+      border-top: 2px solid transparent;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    #status {
+      margin-bottom: 10px;
+      color: #444;
+      font-size: 15px;
+      text-align: center;
+    }
+
+    .total-count {
+      text-align: center;
+      margin: 8px 0;
+      font-size: 14px;
+      color: #444;
+    }
+
+    .table-wrapper {
+      flex-grow: 1;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      min-height: 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid #eee;
+      padding: 8px 12px;
+      font-size: 14px;
+      text-align: left;
+    }
+
+    th {
+      background: #f0f0f0;
+      position: sticky;
+      top: 0;
+    }
+
+    a {
+      color: #4f7df9;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .export-wrapper {
+      text-align: center;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h2>GitHub Commits Email Finder</h2>
+    <div class="input-group">
+      <div>
+        <label for="username">GitHub User/Org</label>
+        <input type="text" id="username" placeholder="e.g. torvalds" />
+      </div>
+      <div>
+        <label for="token">GitHub token (optional) (for higher rate limits)</label>
+        <input type="text" id="token" placeholder="Optional token" />
+      </div>
+      <button id="findBtn" onclick="start()">
+        <span id="findBtnText">Find</span>
+        <span id="spinner" class="spinner" style="display:none;"></span>
+      </button>
+    </div>
+    <div class="options-group">
+      <label class="checkbox-group"><input type="checkbox" id="skipForks" checked /> Skip forks</label>
+      <label class="checkbox-group"><input type="checkbox" id="limitCommits" checked /> Only first 100 commits</label>
+    </div>
+    <div id="status"></div>
+    <div id="totalCount" class="total-count"></div>
+    <div class="table-wrapper">
+      <table id="results">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Repo</th>
+            <th>User</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div id="exportBtn" class="export-wrapper" style="display:none;">
+      <button onclick="exportCSV()">Export as CSV</button>
+    </div>
+  </div>
+
+  <script>
+    const tableData = [];
+    let stopSignal = false;
+
+    async function start() {
+      const username = document.getElementById('username').value.trim();
+      const token = document.getElementById('token').value.trim();
+      const skipForks = document.getElementById('skipForks').checked;
+      const limitCommits = document.getElementById('limitCommits').checked;
+
+      const findBtn = document.getElementById('findBtn');
+      const spinner = document.getElementById('spinner');
+      const findBtnText = document.getElementById('findBtnText');
+
+      const statusDiv = document.getElementById('status');
+      const countDiv = document.getElementById('totalCount');
+      const table = document.getElementById('results').querySelector('tbody');
+      const exportBtn = document.getElementById('exportBtn');
+
+      table.innerHTML = '';
+      tableData.length = 0;
+      exportBtn.style.display = 'none';
+      countDiv.textContent = '';
+      statusDiv.textContent = '';
+      stopSignal = false;
+
+      const emailsSet = new Set();
+      const headers = token ? { Authorization: `token ${token}` } : {};
+
+      findBtnText.textContent = 'Stop';
+      spinner.style.display = 'inline-block';
+      findBtn.onclick = () => stopSignal = true;
+
+      try {
+        let repoPage = 1;
+        while (!stopSignal) {
+          const repoUrl = `https://api.github.com/users/${username}/repos?per_page=100&page=${repoPage}`;
+          const reposRes = await fetch(repoUrl, { headers });
+          if (reposRes.status === 403) {
+            statusDiv.textContent = `Rate limit hit. Use Github token for higher rate limits.`;
+            if (tableData.length > 0) exportBtn.style.display = 'block';
+            return finish();
+          }
+          const repos = await reposRes.json();
+
+          if (!Array.isArray(repos) || repos.length === 0) break;
+
+          for (const repo of repos) {
+            if (stopSignal) break;
+            if (skipForks && repo.fork) continue;
+
+            let commitPage = 1;
+            while (!stopSignal) {
+              const url = `https://api.github.com/repos/${username}/${repo.name}/commits?per_page=100&page=${commitPage}`;
+              statusDiv.textContent = `Fetching: ${repo.name} (page ${commitPage})`;
+
+              const res = await fetch(url, { headers });
+              if (res.status === 403) {
+                statusDiv.textContent = `Rate limit hit. Only partial results were fetched.`;
+                if (tableData.length > 0) exportBtn.style.display = 'block';
+                return finish();
+              }
+
+              const commits = await res.json();
+              if (!Array.isArray(commits) || commits.length === 0) break;
+
+              for (const commit of commits) {
+                if (stopSignal) break;
+                const email = commit?.commit?.author?.email;
+                const login = commit?.author?.login;
+                const repoName = repo.name;
+                const repoUrl = `https://github.com/${username}/${repo.name}`;
+                const userUrl = login ? `https://github.com/${login}` : '';
+                const uniqueKey = `${email}-${repoName}-${login}`;
+
+                if (email && !emailsSet.has(uniqueKey)) {
+                  emailsSet.add(uniqueKey);
+                  tableData.push({ email, repo: repoName, repoUrl, user: login || '', userUrl });
+
+                  const row = document.createElement('tr');
+                  row.innerHTML = `
+                    <td>${email}</td>
+                    <td><a href="${repoUrl}" target="_blank">${repoName}</a></td>
+                    <td>${login ? `<a href="${userUrl}" target="_blank">${login}</a>` : 'N/A'}</td>
+                  `;
+                  table.appendChild(row);
+                  countDiv.textContent = `Results: ${tableData.length}`;
+                }
+              }
+
+              if (limitCommits) break;
+              commitPage++;
+            }
+          }
+
+          repoPage++;
+        }
+
+        statusDiv.textContent = stopSignal ? 'Discovery stopped. Partial results shown.' : `Done. Found ${tableData.length} unique entries.`;
+        if (tableData.length > 0) exportBtn.style.display = 'block';
+
+      } catch (err) {
+        statusDiv.textContent = 'An error occurred.';
+      }
+
+      finish();
+
+      function finish() {
+        findBtnText.textContent = 'Find';
+        spinner.style.display = 'none';
+        findBtn.onclick = start;
+      }
+    }
+
+    function exportCSV() {
+      const csvHeader = ['Email', 'Repo Name', 'Repo URL', 'Username', 'User GitHub URL'];
+      const csvRows = [csvHeader.join(',')];
+
+      for (const row of tableData) {
+        csvRows.push([
+          `"${row.email}"`,
+          `"${row.repo}"`,
+          `"${row.repoUrl}"`,
+          `"${row.user}"`,
+          `"${row.userUrl}"`
+        ].join(','));
+      }
+
+      const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'github_emails.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  </script>
+</body>
+
+</html>
